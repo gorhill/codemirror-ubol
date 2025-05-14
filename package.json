@@ -1,4 +1,10 @@
 {
+  "scripts": {
+    "lint": "eslint --no-warn-ignored -- \"./src/*.js\"",
+    "rollup": "rollup src/editor.ubol.js -f iife -o dist/cm6.bundle.ubol.js -p @rollup/plugin-node-resolve --output.name cm6",
+    "minify": "minify ./dist/cm6.bundle.ubol.js > ./dist/cm6.bundle.ubol.min.js",
+    "build": "npm run rollup && npm run minify"
+  },
   "dependencies": {
     "@codemirror/commands": "^6.1.2",
     "@codemirror/lang-javascript": "^6.1.1",
@@ -6,7 +12,13 @@
     "@codemirror/theme-one-dark": "^6.1.0",
     "@codemirror/view": "^6.6.0",
     "@rollup/plugin-node-resolve": "^15.0.1",
+    "eslint-formatter-compact": "^8.40.0",
     "minify": "^9.1.0",
     "rollup": "^3.5.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.26.0",
+    "eslint": "^9.26.0",
+    "globals": "^16.1.0"
   }
 }
