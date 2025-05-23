@@ -1,4 +1,12 @@
 import {
+    bracketMatching,
+    defaultHighlightStyle,
+    indentOnInput,
+    indentUnit,
+    syntaxHighlighting,
+} from '@codemirror/language';
+
+import {
     closeBrackets,
     closeBracketsKeymap,
 } from '@codemirror/autocomplete';
@@ -28,8 +36,8 @@ import {
 } from '@codemirror/view';
 
 import { EditorState } from '@codemirror/state';
-import { bracketMatching } from '@codemirror/language';
-import { oneDark } from "@codemirror/theme-one-dark";
+import { oneDark } from '@codemirror/theme-one-dark';
+import { yaml } from '@codemirror/lang-yaml';
 
 export function createEditorState(initialContents, options = {}) {
     const extensions = [
@@ -51,12 +59,25 @@ export function createEditorState(initialContents, options = {}) {
         ]),
     ];
 
+    if ( options.updateListener ) {
+        extensions.push(EditorView.updateListener.of(options.updateListener));
+    }
+
     if ( options.placeholder ) {
         extensions.push(placeholder(options.placeholder));
     }
 
     if (options.oneDark) {
         extensions.push(oneDark);
+    }
+
+    if ( options.yaml ) {
+        extensions.push(
+            indentOnInput(),
+            indentUnit.of('  '),
+            syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+            yaml(),
+        );
     }
 
     return EditorState.create({
