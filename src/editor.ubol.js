@@ -34,6 +34,8 @@ import {
     placeholder,
 } from '@codemirror/view';
 
+import { autocompletion } from '@codemirror/autocomplete';
+
 // Theme
 import { oneDark } from '@codemirror/theme-one-dark';
 
@@ -83,13 +85,17 @@ function createEditorState(text, options = {}) {
         extensions.push(oneDark);
     }
 
-    if ( options.yaml ) {
+    if ( options.dnrRules ) {
         extensions.push(
             indentOnInput(),
             indentUnit.of('  '),
             syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
             yaml(),
         );
+    }
+
+    if ( options.autoComplete ) {
+        extensions.push(autocompletion({ override: [ options.autoComplete ] }));
     }
 
     const lineErrorExtension = StateField.define({
@@ -114,25 +120,32 @@ function createEditorState(text, options = {}) {
 
 /******************************************************************************/
 
-function lineErrorAt(view, indices) {
+function lineErrorAdd(view, indices) {
     const config = perViewConfig.get(view);
     if ( config === undefined ) { return; }
     const { lineErrorDecoration } = config;
     if ( lineErrorDecoration === undefined ) { return; }
     const decorations = [];
     for ( const i of indices ) {
-        const line = view.state.doc.line(i+1);
+        const line = view.state.doc.line(i);
         decorations.push(lineErrorDecoration.range(line.from));
     }
     view.dispatch({ effects: lineErrorEffect.of(decorations) });
 }
 
-function lineErrorClear(view) {
+function lineErrorClear(view, lineStart, lineEnd) {
     const config = perViewConfig.get(view);
     if ( config === undefined ) { return; }
     const { lineErrorDecoration } = config;
     if ( lineErrorDecoration === undefined ) { return; }
-    view.dispatch({ effects: lineOkEffect.of(( ) => false) });
+    const { doc } = view.state;
+    const start = doc.line(lineStart);
+    const end = doc.line(lineEnd);
+    const from = start.from;
+    const to = end.to;
+    view.dispatch({
+        effects: lineOkEffect.of((a, b) => a >= to || b < from)
+    });
 }
 
 /******************************************************************************/
@@ -154,6 +167,6 @@ export function createEditorView(options, parent) {
 }
 
 export {
-    lineErrorAt,
+    lineErrorAdd,
     lineErrorClear,
 };
