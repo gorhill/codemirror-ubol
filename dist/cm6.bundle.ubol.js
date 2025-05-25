@@ -24204,7 +24204,7 @@ var cm6 = (function (exports) {
       const from = start.from;
       const to = end.to;
       view.dispatch({
-          effects: lineOkEffect.of((a, b) => a >= to || b < from)
+          effects: lineOkEffect.of((a, b) => a > to || b < from)
       });
   }
 
