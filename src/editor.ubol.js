@@ -94,8 +94,8 @@ function createEditorState(text, options = {}) {
         );
     }
 
-    if ( options.autoComplete ) {
-        extensions.push(autocompletion({ override: [ options.autoComplete ] }));
+    if ( options.autocompletion ) {
+        extensions.push(autocompletion(options.autocompletion));
     }
 
     const lineErrorExtension = StateField.define({
