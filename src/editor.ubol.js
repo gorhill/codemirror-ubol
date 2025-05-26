@@ -20,6 +20,7 @@ import {
 
 import {
     highlightSelectionMatches,
+    searchKeymap,
 } from '@codemirror/search';
 
 import {
@@ -48,6 +49,7 @@ function createEditorState(text, options = {}) {
     const keymaps = [
         ...defaultKeymap,
         ...historyKeymap,
+        ...searchKeymap,
     ];
 
     const { saveListener } = options;
