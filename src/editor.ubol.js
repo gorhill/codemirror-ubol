@@ -1,4 +1,5 @@
 import {
+    Compartment,
     EditorState,
     StateEffect,
     StateField,
@@ -67,7 +68,7 @@ function createEditorState(text, options = {}) {
         lineNumbers(),
         highlightActiveLineGutter(),
         highlightSpecialChars(),
-        history(),
+        undoRedo.of(history()),
         drawSelection(),
         bracketMatching(),
         highlightActiveLine(),
@@ -122,6 +123,21 @@ function createEditorState(text, options = {}) {
 
 /******************************************************************************/
 
+// https://discuss.codemirror.net/t/codemirror-6-cm-clearhistory-equivalent/2851/10
+
+function resetUndoRedo(view) {
+    view.dispatch({
+        effects: [ undoRedo.reconfigure([]) ],
+    });
+    view.dispatch({
+        effects: [ undoRedo.reconfigure([history()]) ],
+    });
+}
+
+const undoRedo = new Compartment();
+
+/******************************************************************************/
+
 function lineErrorAdd(view, indices) {
     const config = perViewConfig.get(view);
     if ( config === undefined ) { return; }
@@ -150,10 +166,10 @@ function lineErrorClear(view, lineStart, lineEnd) {
     });
 }
 
-/******************************************************************************/
-
 const lineErrorEffect = StateEffect.define();
 const lineOkEffect = StateEffect.define();
+
+/******************************************************************************/
 
 const perViewConfig = new WeakMap();
 
@@ -171,4 +187,5 @@ export function createEditorView(options, parent) {
 export {
     lineErrorAdd,
     lineErrorClear,
+    resetUndoRedo,
 };

@@ -25327,7 +25327,7 @@ var cm6 = (function (exports) {
           lineNumbers(),
           highlightActiveLineGutter(),
           highlightSpecialChars(),
-          history(),
+          undoRedo.of(history()),
           drawSelection(),
           bracketMatching(),
           highlightActiveLine(),
@@ -25382,6 +25382,21 @@ var cm6 = (function (exports) {
 
   /******************************************************************************/
 
+  // https://discuss.codemirror.net/t/codemirror-6-cm-clearhistory-equivalent/2851/10
+
+  function resetUndoRedo(view) {
+      view.dispatch({
+          effects: [ undoRedo.reconfigure([]) ],
+      });
+      view.dispatch({
+          effects: [ undoRedo.reconfigure([history()]) ],
+      });
+  }
+
+  const undoRedo = new Compartment();
+
+  /******************************************************************************/
+
   function lineErrorAdd(view, indices) {
       const config = perViewConfig.get(view);
       if ( config === undefined ) { return; }
@@ -25410,10 +25425,10 @@ var cm6 = (function (exports) {
       });
   }
 
-  /******************************************************************************/
-
   const lineErrorEffect = StateEffect.define();
   const lineOkEffect = StateEffect.define();
+
+  /******************************************************************************/
 
   const perViewConfig = new WeakMap();
 
@@ -25431,6 +25446,7 @@ var cm6 = (function (exports) {
   exports.createEditorView = createEditorView;
   exports.lineErrorAdd = lineErrorAdd;
   exports.lineErrorClear = lineErrorClear;
+  exports.resetUndoRedo = resetUndoRedo;
 
   return exports;
 
