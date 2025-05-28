@@ -25353,29 +25353,15 @@ var cm6 = (function (exports) {
               indentUnit.of('  '),
               syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
               yaml(),
+              lineErrorExtension,
+              summaryPanelExtension,
+              feedbackPanelExtension,
           );
       }
 
       if ( options.autocompletion ) {
           extensions.push(autocompletion(options.autocompletion));
       }
-
-      const lineErrorExtension = StateField.define({
-          create() { return Decoration.none; },
-          update(value, transaction) {
-              value = value.map(transaction.changes);
-              for ( const effect of transaction.effects ) {
-                  if ( effect.is(lineErrorEffect) ) {
-                      value = value.update({ add: effect.value });
-                  } else if ( effect.is(lineOkEffect) ) {
-                      value = value.update({ filter: effect.value });
-                  }
-              }
-              return value;
-          },
-          provide: f => EditorView.decorations.from(f),
-      });
-      extensions.push(lineErrorExtension);
 
       return EditorState.create({ doc: text, extensions });
   }
@@ -25396,6 +25382,25 @@ var cm6 = (function (exports) {
   const undoRedo = new Compartment();
 
   /******************************************************************************/
+
+  const lineErrorEffect = StateEffect.define();
+  const lineOkEffect = StateEffect.define();
+
+  const lineErrorExtension = StateField.define({
+      create() { return Decoration.none; },
+      update(value, transaction) {
+          value = value.map(transaction.changes);
+          for ( const effect of transaction.effects ) {
+              if ( effect.is(lineErrorEffect) ) {
+                  value = value.update({ add: effect.value });
+              } else if ( effect.is(lineOkEffect) ) {
+                  value = value.update({ filter: effect.value });
+              }
+          }
+          return value;
+      },
+      provide: f => EditorView.decorations.from(f),
+  });
 
   function lineErrorAdd(view, indices) {
       const config = perViewConfig.get(view);
@@ -25425,8 +25430,90 @@ var cm6 = (function (exports) {
       });
   }
 
-  const lineErrorEffect = StateEffect.define();
-  const lineOkEffect = StateEffect.define();
+  /******************************************************************************/
+
+  function createInfoPanel(view, field, effect) {
+      const config = view.state.field(field);
+      if ( config instanceof Object === false ) { return; }
+      const template = document.querySelector(`template${config.template}`);
+      if ( template === null ) { return; }
+      const fragment = template.content.cloneNode(true);
+      const dom = fragment.querySelector(config.template);
+      if ( dom === null ) { return; }
+      const info = dom.querySelector('.info');
+      if ( info === null ) { return; }
+      info.textContent = config.text;
+      const out = { dom, top: true };
+      if ( dom.querySelector('.close') !== null ) {
+          const close = dom.querySelector('.close');
+          out.mount = ( ) => {
+              close.addEventListener('click', ( ) => {
+                  showInfoPanel(view, effect, null);
+              }, { once: true });
+          };
+      }
+      return out;
+  }
+
+  function showInfoPanel(view, effect, val) {
+      view.dispatch({ effects: effect.of(null) });
+      if ( val === null ) { return; }
+      if ( typeof val.text !== 'string' ) { return; }
+      if ( val.text === '' ) { return; }
+      view.dispatch({ effects: effect.of(val) });
+  }
+
+  /******************************************************************************/
+
+  const summaryPanelEffect = StateEffect.define();
+
+  const summaryPanelExtension = StateField.define({
+      create() { return null; },
+      update(value, transaction) {
+          for ( const effect of transaction.effects ) {
+              if ( effect.is(summaryPanelEffect) === false ) { continue; }
+              value = effect.value;
+          }
+          return value;
+      },
+      provide: f => showPanel.from(f, value =>
+          value instanceof Object ? createSummaryPanel : null
+      ),
+  });
+
+  function createSummaryPanel(view) {
+      return createInfoPanel(view, summaryPanelExtension, summaryPanelEffect);
+  }
+
+  function showSummaryPanel(view, val) {
+      showInfoPanel(view, summaryPanelEffect, val);
+  }
+
+  /******************************************************************************/
+
+  const feedbackPanelEffect = StateEffect.define();
+
+  const feedbackPanelExtension = StateField.define({
+      create() { return null; },
+      update(value, transaction) {
+          for ( const effect of transaction.effects ) {
+              if ( effect.is(feedbackPanelEffect) === false ) { continue; }
+              value = effect.value;
+          }
+          return value;
+      },
+      provide: f => showPanel.from(f, value =>
+          value instanceof Object ? createFeedbackPanel : null
+      ),
+  });
+
+  function createFeedbackPanel(view) {
+      return createInfoPanel(view, feedbackPanelExtension, feedbackPanelEffect);
+  }
+
+  function showFeedbackPanel(view, val) {
+      showInfoPanel(view, feedbackPanelEffect, val);
+  }
 
   /******************************************************************************/
 
@@ -25447,6 +25534,8 @@ var cm6 = (function (exports) {
   exports.lineErrorAdd = lineErrorAdd;
   exports.lineErrorClear = lineErrorClear;
   exports.resetUndoRedo = resetUndoRedo;
+  exports.showFeedbackPanel = showFeedbackPanel;
+  exports.showSummaryPanel = showSummaryPanel;
 
   return exports;
 
