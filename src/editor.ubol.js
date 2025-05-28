@@ -20,6 +20,7 @@ import {
 } from '@codemirror/commands';
 
 import {
+    RegExpCursor,
     highlightSelectionMatches,
     searchKeymap,
 } from '@codemirror/search';
@@ -95,10 +96,17 @@ function createEditorState(text, options = {}) {
             indentUnit.of('  '),
             syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
             yaml(),
-            lineErrorExtension,
             summaryPanelExtension,
             feedbackPanelExtension,
         );
+    }
+
+    if ( options.lineError ) {
+        extensions.push(lineErrorExtension);
+    }
+
+    if ( options.spanError ) {
+        extensions.push(spanErrorExtension);
     }
 
     if ( options.autocompletion ) {
@@ -125,6 +133,49 @@ const undoRedo = new Compartment();
 
 /******************************************************************************/
 
+const spanErrorEffect = StateEffect.define();
+const spanOkEffect = StateEffect.define();
+
+const spanErrorExtension = StateField.define({
+    create() { return Decoration.none; },
+    update(value, transaction) {
+        value = value.map(transaction.changes);
+        for ( const effect of transaction.effects ) {
+            if ( effect.is(spanErrorEffect) ) {
+                value = value.update({ add: effect.value });
+            } else if ( effect.is(spanOkEffect) ) {
+                value = value.update({ filter: effect.value });
+            }
+        }
+        return value;
+    },
+    provide: f => EditorView.decorations.from(f),
+});
+
+function spanErrorAdd(view, from, to, title) {
+    const spec = { class: 'badmark' };
+    if ( title ) {
+        spec.attributes = { title };
+    }
+    const decoration = Decoration.mark(spec);
+    view.dispatch({
+        effects: spanErrorEffect.of([ decoration.range(from, to) ])
+    });
+}
+
+function spanErrorClear(view, lineStart, lineEnd) {
+    const { doc } = view.state;
+    const start = doc.line(lineStart);
+    const end = doc.line(lineEnd);
+    const from = start.from;
+    const to = end.to;
+    view.dispatch({
+        effects: spanOkEffect.of((a, b) => a > to || b < from)
+    });
+}
+
+/******************************************************************************/
+
 const lineErrorEffect = StateEffect.define();
 const lineOkEffect = StateEffect.define();
 
@@ -145,23 +196,16 @@ const lineErrorExtension = StateField.define({
 });
 
 function lineErrorAdd(view, indices) {
-    const config = perViewConfig.get(view);
-    if ( config === undefined ) { return; }
-    const { lineErrorDecoration } = config;
-    if ( lineErrorDecoration === undefined ) { return; }
+    const decoration = Decoration.line({ class: 'badline' });
     const decorations = [];
     for ( const i of indices ) {
         const line = view.state.doc.line(i);
-        decorations.push(lineErrorDecoration.range(line.from));
+        decorations.push(decoration.range(line.from));
     }
     view.dispatch({ effects: lineErrorEffect.of(decorations) });
 }
 
 function lineErrorClear(view, lineStart, lineEnd) {
-    const config = perViewConfig.get(view);
-    if ( config === undefined ) { return; }
-    const { lineErrorDecoration } = config;
-    if ( lineErrorDecoration === undefined ) { return; }
     const { doc } = view.state;
     const start = doc.line(lineStart);
     const end = doc.line(lineEnd);
@@ -259,23 +303,37 @@ function showFeedbackPanel(view, val) {
 
 /******************************************************************************/
 
-const perViewConfig = new WeakMap();
+function findAll(view, regex, from, to) {
+    const { doc } = view.state;
+    if ( from === undefined ) {
+        from = 0;
+    } else if ( to === undefined ) {
+        to = doc.length;
+    }
+    const out = [];
+    const cursor = new RegExpCursor(doc, regex, null, from, to);
+    for (;;) {
+        cursor.next();
+        if ( cursor.done ) { break; }
+        out.push(cursor.value);         
+    }
+    return out;
+}
+
+/******************************************************************************/
 
 export function createEditorView(options, parent) {
     const state = createEditorState('', options);
-    const view = new EditorView({ state, parent });
-    const config = {};
-    perViewConfig.set(view, config);
-    if ( options.lineError ) {
-        config.lineErrorDecoration = Decoration.line({ class: options.lineError });
-    }
-    return view;
+    return new EditorView({ state, parent });
 }
 
 export {
+    spanErrorAdd,
+    spanErrorClear,
     lineErrorAdd,
     lineErrorClear,
     resetUndoRedo,
     showSummaryPanel,
     showFeedbackPanel,
+    findAll,
 };
