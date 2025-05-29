@@ -15845,6 +15845,282 @@ var cm6 = (function (exports) {
   const showTooltip = /*@__PURE__*/Facet.define({
       enables: [tooltipPlugin, baseTheme$4]
   });
+  const showHoverTooltip = /*@__PURE__*/Facet.define({
+      combine: inputs => inputs.reduce((a, i) => a.concat(i), [])
+  });
+  class HoverTooltipHost {
+      // Needs to be static so that host tooltip instances always match
+      static create(view) {
+          return new HoverTooltipHost(view);
+      }
+      constructor(view) {
+          this.view = view;
+          this.mounted = false;
+          this.dom = document.createElement("div");
+          this.dom.classList.add("cm-tooltip-hover");
+          this.manager = new TooltipViewManager(view, showHoverTooltip, (t, p) => this.createHostedView(t, p), t => t.dom.remove());
+      }
+      createHostedView(tooltip, prev) {
+          let hostedView = tooltip.create(this.view);
+          hostedView.dom.classList.add("cm-tooltip-section");
+          this.dom.insertBefore(hostedView.dom, prev ? prev.dom.nextSibling : this.dom.firstChild);
+          if (this.mounted && hostedView.mount)
+              hostedView.mount(this.view);
+          return hostedView;
+      }
+      mount(view) {
+          for (let hostedView of this.manager.tooltipViews) {
+              if (hostedView.mount)
+                  hostedView.mount(view);
+          }
+          this.mounted = true;
+      }
+      positioned(space) {
+          for (let hostedView of this.manager.tooltipViews) {
+              if (hostedView.positioned)
+                  hostedView.positioned(space);
+          }
+      }
+      update(update) {
+          this.manager.update(update);
+      }
+      destroy() {
+          var _a;
+          for (let t of this.manager.tooltipViews)
+              (_a = t.destroy) === null || _a === void 0 ? void 0 : _a.call(t);
+      }
+      passProp(name) {
+          let value = undefined;
+          for (let view of this.manager.tooltipViews) {
+              let given = view[name];
+              if (given !== undefined) {
+                  if (value === undefined)
+                      value = given;
+                  else if (value !== given)
+                      return undefined;
+              }
+          }
+          return value;
+      }
+      get offset() { return this.passProp("offset"); }
+      get getCoords() { return this.passProp("getCoords"); }
+      get overlap() { return this.passProp("overlap"); }
+      get resize() { return this.passProp("resize"); }
+  }
+  const showHoverTooltipHost = /*@__PURE__*/showTooltip.compute([showHoverTooltip], state => {
+      let tooltips = state.facet(showHoverTooltip);
+      if (tooltips.length === 0)
+          return null;
+      return {
+          pos: Math.min(...tooltips.map(t => t.pos)),
+          end: Math.max(...tooltips.map(t => { var _a; return (_a = t.end) !== null && _a !== void 0 ? _a : t.pos; })),
+          create: HoverTooltipHost.create,
+          above: tooltips[0].above,
+          arrow: tooltips.some(t => t.arrow),
+      };
+  });
+  class HoverPlugin {
+      constructor(view, source, field, setHover, hoverTime) {
+          this.view = view;
+          this.source = source;
+          this.field = field;
+          this.setHover = setHover;
+          this.hoverTime = hoverTime;
+          this.hoverTimeout = -1;
+          this.restartTimeout = -1;
+          this.pending = null;
+          this.lastMove = { x: 0, y: 0, target: view.dom, time: 0 };
+          this.checkHover = this.checkHover.bind(this);
+          view.dom.addEventListener("mouseleave", this.mouseleave = this.mouseleave.bind(this));
+          view.dom.addEventListener("mousemove", this.mousemove = this.mousemove.bind(this));
+      }
+      update() {
+          if (this.pending) {
+              this.pending = null;
+              clearTimeout(this.restartTimeout);
+              this.restartTimeout = setTimeout(() => this.startHover(), 20);
+          }
+      }
+      get active() {
+          return this.view.state.field(this.field);
+      }
+      checkHover() {
+          this.hoverTimeout = -1;
+          if (this.active.length)
+              return;
+          let hovered = Date.now() - this.lastMove.time;
+          if (hovered < this.hoverTime)
+              this.hoverTimeout = setTimeout(this.checkHover, this.hoverTime - hovered);
+          else
+              this.startHover();
+      }
+      startHover() {
+          clearTimeout(this.restartTimeout);
+          let { view, lastMove } = this;
+          let desc = view.docView.nearest(lastMove.target);
+          if (!desc)
+              return;
+          let pos, side = 1;
+          if (desc instanceof WidgetView) {
+              pos = desc.posAtStart;
+          }
+          else {
+              pos = view.posAtCoords(lastMove);
+              if (pos == null)
+                  return;
+              let posCoords = view.coordsAtPos(pos);
+              if (!posCoords ||
+                  lastMove.y < posCoords.top || lastMove.y > posCoords.bottom ||
+                  lastMove.x < posCoords.left - view.defaultCharacterWidth ||
+                  lastMove.x > posCoords.right + view.defaultCharacterWidth)
+                  return;
+              let bidi = view.bidiSpans(view.state.doc.lineAt(pos)).find(s => s.from <= pos && s.to >= pos);
+              let rtl = bidi && bidi.dir == Direction.RTL ? -1 : 1;
+              side = (lastMove.x < posCoords.left ? -rtl : rtl);
+          }
+          let open = this.source(view, pos, side);
+          if (open === null || open === void 0 ? void 0 : open.then) {
+              let pending = this.pending = { pos };
+              open.then(result => {
+                  if (this.pending == pending) {
+                      this.pending = null;
+                      if (result && !(Array.isArray(result) && !result.length))
+                          view.dispatch({ effects: this.setHover.of(Array.isArray(result) ? result : [result]) });
+                  }
+              }, e => logException(view.state, e, "hover tooltip"));
+          }
+          else if (open && !(Array.isArray(open) && !open.length)) {
+              view.dispatch({ effects: this.setHover.of(Array.isArray(open) ? open : [open]) });
+          }
+      }
+      get tooltip() {
+          let plugin = this.view.plugin(tooltipPlugin);
+          let index = plugin ? plugin.manager.tooltips.findIndex(t => t.create == HoverTooltipHost.create) : -1;
+          return index > -1 ? plugin.manager.tooltipViews[index] : null;
+      }
+      mousemove(event) {
+          var _a, _b;
+          this.lastMove = { x: event.clientX, y: event.clientY, target: event.target, time: Date.now() };
+          if (this.hoverTimeout < 0)
+              this.hoverTimeout = setTimeout(this.checkHover, this.hoverTime);
+          let { active, tooltip } = this;
+          if (active.length && tooltip && !isInTooltip(tooltip.dom, event) || this.pending) {
+              let { pos } = active[0] || this.pending, end = (_b = (_a = active[0]) === null || _a === void 0 ? void 0 : _a.end) !== null && _b !== void 0 ? _b : pos;
+              if ((pos == end ? this.view.posAtCoords(this.lastMove) != pos
+                  : !isOverRange(this.view, pos, end, event.clientX, event.clientY))) {
+                  this.view.dispatch({ effects: this.setHover.of([]) });
+                  this.pending = null;
+              }
+          }
+      }
+      mouseleave(event) {
+          clearTimeout(this.hoverTimeout);
+          this.hoverTimeout = -1;
+          let { active } = this;
+          if (active.length) {
+              let { tooltip } = this;
+              let inTooltip = tooltip && tooltip.dom.contains(event.relatedTarget);
+              if (!inTooltip)
+                  this.view.dispatch({ effects: this.setHover.of([]) });
+              else
+                  this.watchTooltipLeave(tooltip.dom);
+          }
+      }
+      watchTooltipLeave(tooltip) {
+          let watch = (event) => {
+              tooltip.removeEventListener("mouseleave", watch);
+              if (this.active.length && !this.view.dom.contains(event.relatedTarget))
+                  this.view.dispatch({ effects: this.setHover.of([]) });
+          };
+          tooltip.addEventListener("mouseleave", watch);
+      }
+      destroy() {
+          clearTimeout(this.hoverTimeout);
+          this.view.dom.removeEventListener("mouseleave", this.mouseleave);
+          this.view.dom.removeEventListener("mousemove", this.mousemove);
+      }
+  }
+  const tooltipMargin = 4;
+  function isInTooltip(tooltip, event) {
+      let { left, right, top, bottom } = tooltip.getBoundingClientRect(), arrow;
+      if (arrow = tooltip.querySelector(".cm-tooltip-arrow")) {
+          let arrowRect = arrow.getBoundingClientRect();
+          top = Math.min(arrowRect.top, top);
+          bottom = Math.max(arrowRect.bottom, bottom);
+      }
+      return event.clientX >= left - tooltipMargin && event.clientX <= right + tooltipMargin &&
+          event.clientY >= top - tooltipMargin && event.clientY <= bottom + tooltipMargin;
+  }
+  function isOverRange(view, from, to, x, y, margin) {
+      let rect = view.scrollDOM.getBoundingClientRect();
+      let docBottom = view.documentTop + view.documentPadding.top + view.contentHeight;
+      if (rect.left > x || rect.right < x || rect.top > y || Math.min(rect.bottom, docBottom) < y)
+          return false;
+      let pos = view.posAtCoords({ x, y }, false);
+      return pos >= from && pos <= to;
+  }
+  /**
+  Set up a hover tooltip, which shows up when the pointer hovers
+  over ranges of text. The callback is called when the mouse hovers
+  over the document text. It should, if there is a tooltip
+  associated with position `pos`, return the tooltip description
+  (either directly or in a promise). The `side` argument indicates
+  on which side of the position the pointer is—it will be -1 if the
+  pointer is before the position, 1 if after the position.
+
+  Note that all hover tooltips are hosted within a single tooltip
+  container element. This allows multiple tooltips over the same
+  range to be "merged" together without overlapping.
+
+  The return value is a valid [editor extension](https://codemirror.net/6/docs/ref/#state.Extension)
+  but also provides an `active` property holding a state field that
+  can be used to read the currently active tooltips produced by this
+  extension.
+  */
+  function hoverTooltip(source, options = {}) {
+      let setHover = StateEffect.define();
+      let hoverState = StateField.define({
+          create() { return []; },
+          update(value, tr) {
+              if (value.length) {
+                  if (options.hideOnChange && (tr.docChanged || tr.selection))
+                      value = [];
+                  else if (options.hideOn)
+                      value = value.filter(v => !options.hideOn(tr, v));
+                  if (tr.docChanged) {
+                      let mapped = [];
+                      for (let tooltip of value) {
+                          let newPos = tr.changes.mapPos(tooltip.pos, -1, MapMode.TrackDel);
+                          if (newPos != null) {
+                              let copy = Object.assign(Object.create(null), tooltip);
+                              copy.pos = newPos;
+                              if (copy.end != null)
+                                  copy.end = tr.changes.mapPos(copy.end);
+                              mapped.push(copy);
+                          }
+                      }
+                      value = mapped;
+                  }
+              }
+              for (let effect of tr.effects) {
+                  if (effect.is(setHover))
+                      value = effect.value;
+                  if (effect.is(closeHoverTooltipEffect))
+                      value = [];
+              }
+              return value;
+          },
+          provide: f => showHoverTooltip.from(f)
+      });
+      return {
+          active: hoverState,
+          extension: [
+              hoverState,
+              ViewPlugin.define(view => new HoverPlugin(view, source, hoverState, setHover, options.hoverTime || 300 /* Hover.Time */)),
+              showHoverTooltipHost
+          ]
+      };
+  }
   /**
   Get the active tooltip view for a given tooltip, if available.
   */
@@ -15855,6 +16131,7 @@ var cm6 = (function (exports) {
       let found = plugin.manager.tooltips.indexOf(tooltip);
       return found < 0 ? null : plugin.manager.tooltipViews[found];
   }
+  const closeHoverTooltipEffect = /*@__PURE__*/StateEffect.define();
 
   const panelConfig = /*@__PURE__*/Facet.define({
       combine(configs) {
@@ -25324,7 +25601,6 @@ var cm6 = (function (exports) {
       }
 
       const extensions = [
-          lineNumbers(),
           highlightActiveLineGutter(),
           highlightSpecialChars(),
           undoRedo.of(history()),
@@ -25334,6 +25610,16 @@ var cm6 = (function (exports) {
           highlightSelectionMatches(),
           keymap.of(keymaps),
       ];
+
+      let gutterConfig;
+      if ( options.gutterClick ) {
+          gutterConfig = {
+              domEventHandlers: {
+                  click: options.gutterClick,
+              }
+          };
+      }
+      extensions.push(lineNumbers(gutterConfig));
 
       if ( options.updateListener ) {
           extensions.push(EditorView.updateListener.of(options.updateListener));
@@ -25368,6 +25654,10 @@ var cm6 = (function (exports) {
 
       if ( options.autocompletion ) {
           extensions.push(autocompletion(options.autocompletion));
+      }
+
+      if ( options.hoverTooltip ) {
+          extensions.push(hoverTooltip(options.hoverTooltip));
       }
 
       return EditorState.create({ doc: text, extensions });
@@ -25409,10 +25699,10 @@ var cm6 = (function (exports) {
       provide: f => EditorView.decorations.from(f),
   });
 
-  function spanErrorAdd(view, from, to, title) {
+  function spanErrorAdd(view, from, to, tooltip) {
       const spec = { class: 'badmark' };
-      if ( title ) {
-          spec.attributes = { title };
+      if ( tooltip ) {
+          spec.attributes = { 'data-tooltip': tooltip };
       }
       const decoration = Decoration.mark(spec);
       view.dispatch({

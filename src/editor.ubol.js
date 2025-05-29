@@ -32,6 +32,7 @@ import {
     highlightActiveLine,
     highlightActiveLineGutter,
     highlightSpecialChars,
+    hoverTooltip,
     keymap,
     lineNumbers,
     placeholder,
@@ -67,7 +68,6 @@ function createEditorState(text, options = {}) {
     }
 
     const extensions = [
-        lineNumbers(),
         highlightActiveLineGutter(),
         highlightSpecialChars(),
         undoRedo.of(history()),
@@ -77,6 +77,16 @@ function createEditorState(text, options = {}) {
         highlightSelectionMatches(),
         keymap.of(keymaps),
     ];
+
+    let gutterConfig;
+    if ( options.gutterClick ) {
+        gutterConfig = {
+            domEventHandlers: {
+                click: options.gutterClick,
+            }
+        };
+    }
+    extensions.push(lineNumbers(gutterConfig));
 
     if ( options.updateListener ) {
         extensions.push(EditorView.updateListener.of(options.updateListener));
@@ -111,6 +121,10 @@ function createEditorState(text, options = {}) {
 
     if ( options.autocompletion ) {
         extensions.push(autocompletion(options.autocompletion));
+    }
+
+    if ( options.hoverTooltip ) {
+        extensions.push(hoverTooltip(options.hoverTooltip));
     }
 
     return EditorState.create({ doc: text, extensions });
@@ -152,10 +166,10 @@ const spanErrorExtension = StateField.define({
     provide: f => EditorView.decorations.from(f),
 });
 
-function spanErrorAdd(view, from, to, title) {
+function spanErrorAdd(view, from, to, tooltip) {
     const spec = { class: 'badmark' };
-    if ( title ) {
-        spec.attributes = { title };
+    if ( tooltip ) {
+        spec.attributes = { 'data-tooltip': tooltip };
     }
     const decoration = Decoration.mark(spec);
     view.dispatch({
