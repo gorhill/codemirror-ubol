@@ -24423,7 +24423,7 @@ var cm6 = (function (exports) {
   /******************************************************************************/
 
   function createEditorView(options, parent) {
-      const state = createEditorState('', options);
+      const state = createEditorState(options.text, options);
       return new EditorView({ state, parent });
   }
 

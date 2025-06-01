@@ -363,7 +363,7 @@ function findAll(view, regex, from, to) {
 /******************************************************************************/
 
 export function createEditorView(options, parent) {
-    const state = createEditorState('', options);
+    const state = createEditorState(options.text, options);
     return new EditorView({ state, parent });
 }
 
