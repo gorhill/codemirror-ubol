@@ -6,8 +6,13 @@ import {
 } from '@codemirror/state';
 
 import {
+    StreamLanguage,
     bracketMatching,
     defaultHighlightStyle,
+    foldAll,
+    foldGutter,
+    foldKeymap,
+    foldService,
     indentOnInput,
     indentUnit,
     syntaxHighlighting,
@@ -44,9 +49,6 @@ import { autocompletion } from '@codemirror/autocomplete';
 // Theme
 import { oneDark } from '@codemirror/theme-one-dark';
 
-// Language
-import { yaml } from '@codemirror/lang-yaml';
-
 /******************************************************************************/
 
 function createEditorState(text, options = {}) {
@@ -65,6 +67,10 @@ function createEditorState(text, options = {}) {
                 return true;
             }
         });
+    }
+
+    if ( options.foldService ) {
+        keymaps.push(...foldKeymap);
     }
 
     const extensions = [
@@ -105,7 +111,6 @@ function createEditorState(text, options = {}) {
             indentOnInput(),
             indentUnit.of('  '),
             syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-            yaml(),
             summaryPanelExtension,
             feedbackPanelExtension,
         );
@@ -125,6 +130,27 @@ function createEditorState(text, options = {}) {
 
     if ( options.hoverTooltip ) {
         extensions.push(hoverTooltip(options.hoverTooltip));
+    }
+
+    if ( options.streamParser ) {
+        extensions.push(
+            StreamLanguage.define(options.streamParser),
+        );
+    }
+
+    if ( options.foldService ) {
+        extensions.push(
+            foldService.of(options.foldService),
+            foldGutter({
+                closedText: '\u25b6',
+                openText: '\u25bc',
+                domEventHandlers: {
+                    click: view => {
+                        view.focus();
+                    }
+                },
+            }),
+        );
     }
 
     return EditorState.create({ doc: text, extensions });
@@ -350,4 +376,5 @@ export {
     showSummaryPanel,
     showFeedbackPanel,
     findAll,
+    foldAll,
 };
