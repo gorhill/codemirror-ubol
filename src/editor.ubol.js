@@ -44,6 +44,7 @@ import {
     showPanel,
 } from '@codemirror/view';
 
+import { MergeView } from '@codemirror/merge';
 import { autocompletion } from '@codemirror/autocomplete';
 
 // Theme
@@ -160,7 +161,7 @@ function createEditorState(text, options = {}) {
 
 // https://discuss.codemirror.net/t/codemirror-6-cm-clearhistory-equivalent/2851/10
 
-function resetUndoRedo(view) {
+export function resetUndoRedo(view) {
     view.dispatch({
         effects: [ undoRedo.reconfigure([]) ],
     });
@@ -192,7 +193,7 @@ const spanErrorExtension = StateField.define({
     provide: f => EditorView.decorations.from(f),
 });
 
-function spanErrorAdd(view, from, to, tooltip) {
+export function spanErrorAdd(view, from, to, tooltip) {
     const spec = { class: 'badmark' };
     if ( tooltip ) {
         spec.attributes = { 'data-tooltip': tooltip };
@@ -203,7 +204,7 @@ function spanErrorAdd(view, from, to, tooltip) {
     });
 }
 
-function spanErrorClear(view, lineStart, lineEnd) {
+export function spanErrorClear(view, lineStart, lineEnd) {
     const { doc } = view.state;
     const start = doc.line(lineStart);
     const end = doc.line(lineEnd);
@@ -235,7 +236,7 @@ const lineErrorExtension = StateField.define({
     provide: f => EditorView.decorations.from(f),
 });
 
-function lineErrorAdd(view, indices) {
+export function lineErrorAdd(view, indices) {
     const decoration = Decoration.line({ class: 'badline' });
     const decorations = [];
     for ( const i of indices ) {
@@ -245,7 +246,7 @@ function lineErrorAdd(view, indices) {
     view.dispatch({ effects: lineErrorEffect.of(decorations) });
 }
 
-function lineErrorClear(view, lineStart, lineEnd) {
+export function lineErrorClear(view, lineStart, lineEnd) {
     const { doc } = view.state;
     const start = doc.line(lineStart);
     const end = doc.line(lineEnd);
@@ -311,7 +312,7 @@ function createSummaryPanel(view) {
     return createInfoPanel(view, summaryPanelExtension, summaryPanelEffect);
 }
 
-function showSummaryPanel(view, val) {
+export function showSummaryPanel(view, val) {
     showInfoPanel(view, summaryPanelEffect, val);
 }
 
@@ -337,7 +338,7 @@ function createFeedbackPanel(view) {
     return createInfoPanel(view, feedbackPanelExtension, feedbackPanelEffect);
 }
 
-function showFeedbackPanel(view, val) {
+export function showFeedbackPanel(view, val) {
     showInfoPanel(view, feedbackPanelEffect, val);
 }
 
@@ -367,14 +368,59 @@ export function createEditorView(options, parent) {
     return new EditorView({ state, parent });
 }
 
+/******************************************************************************/
+
+// https://github.com/codemirror/merge?tab=readme-ov-file
+
+export function createMergeView(options, parent) {
+    const basicSetup = [
+        lineNumbers(),
+        highlightActiveLineGutter(),
+        highlightSpecialChars(),
+        history(),
+        foldGutter(),
+        drawSelection(),
+        EditorView.lineWrapping,
+        EditorState.allowMultipleSelections.of(true),
+        indentOnInput(),
+        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        bracketMatching(),
+        autocompletion(),
+        highlightActiveLine(),
+        highlightSelectionMatches(),
+        keymap.of([
+            ...defaultKeymap,
+            ...searchKeymap,
+            ...historyKeymap,
+            ...foldKeymap,
+        ]),
+    ];
+
+    const a = {
+        doc: options.aDoc || '',
+        extensions: basicSetup,
+    };
+    if ( options.aUpdateListener ) {
+        a.extensions.push(EditorView.updateListener.of(options.aUpdateListener));
+    };
+
+    return new MergeView({
+        a,
+        b: {
+            doc: options.bDoc || '',
+            extensions: [
+                basicSetup,
+                EditorView.editable.of(false),
+                EditorState.readOnly.of(true),
+            ]
+        },
+        parent,
+    })
+};
+
+/******************************************************************************/
+
 export {
-    spanErrorAdd,
-    spanErrorClear,
-    lineErrorAdd,
-    lineErrorClear,
-    resetUndoRedo,
-    showSummaryPanel,
-    showFeedbackPanel,
     findAll,
     foldAll,
 };
