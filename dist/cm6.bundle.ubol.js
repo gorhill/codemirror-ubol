@@ -2109,7 +2109,7 @@ var cm6 = (function (exports) {
   const changeFilter = /*@__PURE__*/Facet.define();
   const transactionFilter = /*@__PURE__*/Facet.define();
   const transactionExtender = /*@__PURE__*/Facet.define();
-  const readOnly = /*@__PURE__*/Facet.define({
+  const readOnly$1 = /*@__PURE__*/Facet.define({
       combine: values => values.length ? values[0] : false
   });
 
@@ -2841,7 +2841,7 @@ var cm6 = (function (exports) {
       Returns true when the editor is
       [configured](https://codemirror.net/6/docs/ref/#state.EditorState^readOnly) to be read-only.
       */
-      get readOnly() { return this.facet(readOnly); }
+      get readOnly() { return this.facet(readOnly$1); }
       /**
       Look up a translation for the given phrase (via the
       [`phrases`](https://codemirror.net/6/docs/ref/#state.EditorState^phrases) facet), or return the
@@ -2972,7 +2972,7 @@ var cm6 = (function (exports) {
   controls whether the editor's DOM is set to be editable (and
   thus focusable).
   */
-  EditorState.readOnly = readOnly;
+  EditorState.readOnly = readOnly$1;
   /**
   Registers translation phrases. The
   [`phrase`](https://codemirror.net/6/docs/ref/#state.EditorState.phrase) method will look through
@@ -25521,6 +25521,8 @@ var cm6 = (function (exports) {
           highlightActiveLine(),
           highlightSelectionMatches(),
           keymap.of(keymaps),
+          readOnly.of(EditorState.readOnly.of(options.readOnly)),
+          syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
       ];
 
       let gutterConfig;
@@ -25541,18 +25543,19 @@ var cm6 = (function (exports) {
           extensions.push(placeholder(options.placeholder));
       }
 
-      if (options.oneDark) {
+      if ( options.oneDark ) {
           extensions.push(oneDark);
       }
 
-      if ( options.dnrRules ) {
+      if ( options.yamlLike ) {
           extensions.push(
               indentOnInput(),
               indentUnit.of('  '),
-              syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-              summaryPanelExtension,
-              feedbackPanelExtension,
           );
+      }
+
+      if ( options.panels ) {
+          extensions.push(...options.panels);
       }
 
       if ( options.lineError ) {
@@ -25609,6 +25612,22 @@ var cm6 = (function (exports) {
   }
 
   const undoRedo = new Compartment();
+
+  /******************************************************************************/
+
+  function toggleReadOnly(view, state) {
+      if ( state ) {
+          view.dispatch({
+              effects: [ readOnly.reconfigure(EditorState.readOnly.of(true)) ],
+          });
+      } else {
+          view.dispatch({
+              effects: [ readOnly.reconfigure(EditorState.readOnly.of(false)) ],
+          });
+      }
+  }
+
+  const readOnly = new Compartment();
 
   /******************************************************************************/
 
@@ -25697,87 +25716,40 @@ var cm6 = (function (exports) {
 
   /******************************************************************************/
 
-  function createInfoPanel(view, field, effect) {
-      const config = view.state.field(field);
-      if ( config instanceof Object === false ) { return; }
-      const template = document.querySelector(`template${config.template}`);
-      if ( template === null ) { return; }
-      const fragment = template.content.cloneNode(true);
-      const dom = fragment.querySelector(config.template);
-      if ( dom === null ) { return; }
-      const info = dom.querySelector('.info');
-      if ( info === null ) { return; }
-      info.textContent = config.text;
-      const out = { dom, top: true };
-      if ( dom.querySelector('.close') !== null ) {
-          const close = dom.querySelector('.close');
-          out.mount = ( ) => {
-              close.addEventListener('click', ( ) => {
-                  showInfoPanel(view, effect, null);
-              }, { once: true });
-          };
-      }
-      return out;
-  }
+  function createViewPanel() {
+      const panelEffect = StateEffect.define();
 
-  function showInfoPanel(view, effect, val) {
-      view.dispatch({ effects: effect.of(null) });
-      if ( val === null ) { return; }
-      if ( typeof val.text !== 'string' ) { return; }
-      if ( val.text === '' ) { return; }
-      view.dispatch({ effects: effect.of(val) });
-  }
+      const panelExtension = StateField.define({
+          create() { return null; },
+          update(value, transaction) {
+              for ( const effect of transaction.effects ) {
+                  if ( effect.is(panelEffect) === false ) { continue; }
+                  return effect.value;
+              }
+              return value;
+          },
+          provide: f => showPanel.from(f, config =>
+              config instanceof Object ? createPanel : null
+          ),
+      });
+      panelExtension.render = (view, config) => {
+          view.dispatch({ effects: panelEffect.of(null) });
+          if ( Boolean(config) === false ) { return; }
+          view.dispatch({ effects: panelEffect.of(config) });
+      };
 
-  /******************************************************************************/
-
-  const summaryPanelEffect = StateEffect.define();
-
-  const summaryPanelExtension = StateField.define({
-      create() { return null; },
-      update(value, transaction) {
-          for ( const effect of transaction.effects ) {
-              if ( effect.is(summaryPanelEffect) === false ) { continue; }
-              value = effect.value;
+      const createPanel = function(view) {
+          const config = view.state.field(panelExtension);
+          if ( config instanceof Object === false ) { return; }
+          if ( config.dom instanceof Element === false ) { return; }
+          const out = { dom: config.dom, top: true };
+          if ( config.mount ) {
+              out.mount = config.mount;
           }
-          return value;
-      },
-      provide: f => showPanel.from(f, value =>
-          value instanceof Object ? createSummaryPanel : null
-      ),
-  });
+          return out;
+      };
 
-  function createSummaryPanel(view) {
-      return createInfoPanel(view, summaryPanelExtension, summaryPanelEffect);
-  }
-
-  function showSummaryPanel(view, val) {
-      showInfoPanel(view, summaryPanelEffect, val);
-  }
-
-  /******************************************************************************/
-
-  const feedbackPanelEffect = StateEffect.define();
-
-  const feedbackPanelExtension = StateField.define({
-      create() { return null; },
-      update(value, transaction) {
-          for ( const effect of transaction.effects ) {
-              if ( effect.is(feedbackPanelEffect) === false ) { continue; }
-              value = effect.value;
-          }
-          return value;
-      },
-      provide: f => showPanel.from(f, value =>
-          value instanceof Object ? createFeedbackPanel : null
-      ),
-  });
-
-  function createFeedbackPanel(view) {
-      return createInfoPanel(view, feedbackPanelExtension, feedbackPanelEffect);
-  }
-
-  function showFeedbackPanel(view, val) {
-      showInfoPanel(view, feedbackPanelEffect, val);
+      return panelExtension;
   }
 
   /******************************************************************************/
@@ -25857,15 +25829,15 @@ var cm6 = (function (exports) {
 
   exports.createEditorView = createEditorView;
   exports.createMergeView = createMergeView;
+  exports.createViewPanel = createViewPanel;
   exports.findAll = findAll;
   exports.foldAll = foldAll;
   exports.lineErrorAdd = lineErrorAdd;
   exports.lineErrorClear = lineErrorClear;
   exports.resetUndoRedo = resetUndoRedo;
-  exports.showFeedbackPanel = showFeedbackPanel;
-  exports.showSummaryPanel = showSummaryPanel;
   exports.spanErrorAdd = spanErrorAdd;
   exports.spanErrorClear = spanErrorClear;
+  exports.toggleReadOnly = toggleReadOnly;
 
   return exports;
 

@@ -83,6 +83,8 @@ function createEditorState(text, options = {}) {
         highlightActiveLine(),
         highlightSelectionMatches(),
         keymap.of(keymaps),
+        readOnly.of(EditorState.readOnly.of(options.readOnly)),
+        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
     ];
 
     let gutterConfig;
@@ -103,18 +105,19 @@ function createEditorState(text, options = {}) {
         extensions.push(placeholder(options.placeholder));
     }
 
-    if (options.oneDark) {
+    if ( options.oneDark ) {
         extensions.push(oneDark);
     }
 
-    if ( options.dnrRules ) {
+    if ( options.yamlLike ) {
         extensions.push(
             indentOnInput(),
             indentUnit.of('  '),
-            syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-            summaryPanelExtension,
-            feedbackPanelExtension,
         );
+    }
+
+    if ( options.panels ) {
+        extensions.push(...options.panels);
     }
 
     if ( options.lineError ) {
@@ -171,6 +174,22 @@ export function resetUndoRedo(view) {
 }
 
 const undoRedo = new Compartment();
+
+/******************************************************************************/
+
+export function toggleReadOnly(view, state) {
+    if ( state ) {
+        view.dispatch({
+            effects: [ readOnly.reconfigure(EditorState.readOnly.of(true)) ],
+        });
+    } else {
+        view.dispatch({
+            effects: [ readOnly.reconfigure(EditorState.readOnly.of(false)) ],
+        });
+    }
+}
+
+const readOnly = new Compartment();
 
 /******************************************************************************/
 
@@ -259,87 +278,40 @@ export function lineErrorClear(view, lineStart, lineEnd) {
 
 /******************************************************************************/
 
-function createInfoPanel(view, field, effect) {
-    const config = view.state.field(field);
-    if ( config instanceof Object === false ) { return; }
-    const template = document.querySelector(`template${config.template}`);
-    if ( template === null ) { return; }
-    const fragment = template.content.cloneNode(true);
-    const dom = fragment.querySelector(config.template);
-    if ( dom === null ) { return; }
-    const info = dom.querySelector('.info');
-    if ( info === null ) { return; }
-    info.textContent = config.text;
-    const out = { dom, top: true };
-    if ( dom.querySelector('.close') !== null ) {
-        const close = dom.querySelector('.close');
-        out.mount = ( ) => {
-            close.addEventListener('click', ( ) => {
-                showInfoPanel(view, effect, null);
-            }, { once: true });
-        };
+export function createViewPanel() {
+    const panelEffect = StateEffect.define();
+
+    const panelExtension = StateField.define({
+        create() { return null; },
+        update(value, transaction) {
+            for ( const effect of transaction.effects ) {
+                if ( effect.is(panelEffect) === false ) { continue; }
+                return effect.value;
+            }
+            return value;
+        },
+        provide: f => showPanel.from(f, config =>
+            config instanceof Object ? createPanel : null
+        ),
+    });
+    panelExtension.render = (view, config) => {
+        view.dispatch({ effects: panelEffect.of(null) });
+        if ( Boolean(config) === false ) { return; }
+        view.dispatch({ effects: panelEffect.of(config) });
+    };
+
+    const createPanel = function(view) {
+        const config = view.state.field(panelExtension);
+        if ( config instanceof Object === false ) { return; }
+        if ( config.dom instanceof Element === false ) { return; }
+        const out = { dom: config.dom, top: true };
+        if ( config.mount ) {
+            out.mount = config.mount;
+        }
+        return out;
     }
-    return out;
-}
 
-function showInfoPanel(view, effect, val) {
-    view.dispatch({ effects: effect.of(null) });
-    if ( val === null ) { return; }
-    if ( typeof val.text !== 'string' ) { return; }
-    if ( val.text === '' ) { return; }
-    view.dispatch({ effects: effect.of(val) });
-}
-
-/******************************************************************************/
-
-const summaryPanelEffect = StateEffect.define()
-
-const summaryPanelExtension = StateField.define({
-    create() { return null; },
-    update(value, transaction) {
-        for ( const effect of transaction.effects ) {
-            if ( effect.is(summaryPanelEffect) === false ) { continue; }
-            value = effect.value;
-        }
-        return value;
-    },
-    provide: f => showPanel.from(f, value =>
-        value instanceof Object ? createSummaryPanel : null
-    ),
-});
-
-function createSummaryPanel(view) {
-    return createInfoPanel(view, summaryPanelExtension, summaryPanelEffect);
-}
-
-export function showSummaryPanel(view, val) {
-    showInfoPanel(view, summaryPanelEffect, val);
-}
-
-/******************************************************************************/
-
-const feedbackPanelEffect = StateEffect.define()
-
-const feedbackPanelExtension = StateField.define({
-    create() { return null; },
-    update(value, transaction) {
-        for ( const effect of transaction.effects ) {
-            if ( effect.is(feedbackPanelEffect) === false ) { continue; }
-            value = effect.value;
-        }
-        return value;
-    },
-    provide: f => showPanel.from(f, value =>
-        value instanceof Object ? createFeedbackPanel : null
-    ),
-});
-
-function createFeedbackPanel(view) {
-    return createInfoPanel(view, feedbackPanelExtension, feedbackPanelEffect);
-}
-
-export function showFeedbackPanel(view, val) {
-    showInfoPanel(view, feedbackPanelEffect, val);
+    return panelExtension;
 }
 
 /******************************************************************************/
