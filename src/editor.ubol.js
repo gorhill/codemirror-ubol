@@ -6,6 +6,7 @@ import {
 } from '@codemirror/state';
 
 import {
+    HighlightStyle,
     StreamLanguage,
     bracketMatching,
     defaultHighlightStyle,
@@ -47,7 +48,8 @@ import {
 import { MergeView } from '@codemirror/merge';
 import { autocompletion } from '@codemirror/autocomplete';
 
-// Theme
+// Theme-related
+import { Tag } from '@lezer/highlight'
 import { oneDark } from '@codemirror/theme-one-dark';
 
 /******************************************************************************/
@@ -84,7 +86,7 @@ function createEditorState(text, options = {}) {
         highlightSelectionMatches(),
         keymap.of(keymaps),
         readOnly.of(EditorState.readOnly.of(options.readOnly)),
-        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        syntaxHighlighting(defaultHighlightStyle),
     ];
 
     let gutterConfig;
@@ -137,9 +139,25 @@ function createEditorState(text, options = {}) {
     }
 
     if ( options.streamParser ) {
+        const customStyles = [];
+        const { tokenTable } = options.streamParser;
+        if ( tokenTable ) {
+            const newTokenTable = {};
+            tokenTable.forEach(a => {
+                const tag = Tag.define();
+                newTokenTable[a] = tag;
+                customStyles.push({ tag, 'class': a });
+            });
+            options.streamParser.tokenTable = newTokenTable;
+        }
         extensions.push(
             StreamLanguage.define(options.streamParser),
         );
+        if ( customStyles.length !== 0 ) {
+            extensions.push(
+                syntaxHighlighting(HighlightStyle.define(customStyles))
+            );
+        }
     }
 
     if ( options.foldService ) {

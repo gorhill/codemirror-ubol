@@ -9455,8 +9455,7 @@ var cm6 = (function (exports) {
                   closestRect = rect;
                   closestX = dx;
                   closestY = dy;
-                  let side = dy ? (y < rect.top ? -1 : 1) : dx ? (x < rect.left ? -1 : 1) : 0;
-                  closestOverlap = !side || (side > 0 ? i < rects.length - 1 : i > 0);
+                  closestOverlap = !dx ? true : x < rect.left ? i > 0 : i < rects.length - 1;
               }
               if (dx == 0) {
                   if (y > rect.bottom && (!aboveRect || aboveRect.bottom < rect.bottom)) {
@@ -9632,13 +9631,24 @@ var cm6 = (function (exports) {
   // line before. This is used to detect such a result so that it can be
   // ignored (issue #401).
   function isSuspiciousSafariCaretResult(node, offset, x) {
-      let len;
+      let len, scan = node;
       if (node.nodeType != 3 || offset != (len = node.nodeValue.length))
           return false;
-      for (let next = node.nextSibling; next; next = next.nextSibling)
-          if (next.nodeType != 1 || next.nodeName != "BR")
+      for (;;) { // Check that there is no content after this node
+          let next = scan.nextSibling;
+          if (next) {
+              if (next.nodeName == "BR")
+                  break;
               return false;
-      return textRange(node, len - 1, len).getBoundingClientRect().left > x;
+          }
+          else {
+              let parent = scan.parentNode;
+              if (!parent || parent.nodeName == "DIV")
+                  break;
+              scan = parent;
+          }
+      }
+      return textRange(node, len - 1, len).getBoundingClientRect().right > x;
   }
   // Chrome will move positions between lines to the start of the next line
   function isSuspiciousChromeCaretResult(node, offset, x) {
@@ -18320,8 +18330,8 @@ var cm6 = (function (exports) {
   const indentService = /*@__PURE__*/Facet.define();
   /**
   Facet for overriding the unit by which indentation happens. Should
-  be a string consisting either entirely of the same whitespace
-  character. When not set, this defaults to 2 spaces.
+  be a string consisting entirely of the same whitespace character.
+  When not set, this defaults to 2 spaces.
   */
   const indentUnit = /*@__PURE__*/Facet.define({
       combine: values => {
@@ -18490,7 +18500,8 @@ var cm6 = (function (exports) {
       let inner = ast.resolveInner(pos, -1).resolve(pos, 0).enterUnfinishedNodesBefore(pos);
       if (inner != stack.node) {
           let add = [];
-          for (let cur = inner; cur && !(cur.from == stack.node.from && cur.type == stack.node.type); cur = cur.parent)
+          for (let cur = inner; cur && !(cur.from < stack.node.from || cur.to > stack.node.to ||
+              cur.from == stack.node.from && cur.type == stack.node.type); cur = cur.parent)
               add.push(cur);
           for (let i = add.length - 1; i >= 0; i--)
               stack = { node: add[i], next: stack };
@@ -18987,7 +18998,7 @@ var cm6 = (function (exports) {
   to fold or unfold the line).
   */
   function foldGutter(config = {}) {
-      let fullConfig = Object.assign(Object.assign({}, foldGutterDefaults), config);
+      let fullConfig = { ...foldGutterDefaults, ...config };
       let canFold = new FoldMarker(fullConfig, true), canUnfold = new FoldMarker(fullConfig, false);
       let markers = ViewPlugin.fromClass(class {
           constructor(view) {
@@ -19022,7 +19033,9 @@ var cm6 = (function (exports) {
               initialSpacer() {
                   return new FoldMarker(fullConfig, false);
               },
-              domEventHandlers: Object.assign(Object.assign({}, domEventHandlers), { click: (view, line, event) => {
+              domEventHandlers: {
+                  ...domEventHandlers,
+                  click: (view, line, event) => {
                       if (domEventHandlers.click && domEventHandlers.click(view, line, event))
                           return true;
                       let folded = findFold(view.state, line.from, line.to);
@@ -19036,7 +19049,8 @@ var cm6 = (function (exports) {
                           return true;
                       }
                       return false;
-                  } })
+                  }
+              }
           }),
           codeFolding()
       ];
@@ -23101,6 +23115,7 @@ var cm6 = (function (exports) {
       combine: values => values[0]
   });
   const setChunks = /*@__PURE__*/StateEffect.define();
+  const computeChunks = /*@__PURE__*/Facet.define();
   const ChunkField = /*@__PURE__*/StateField.define({
       create(state) {
           return null;
@@ -23109,6 +23124,8 @@ var cm6 = (function (exports) {
           for (let e of tr.effects)
               if (e.is(setChunks))
                   current = e.value;
+          for (let comp of tr.state.facet(computeChunks))
+              current = comp(current, tr);
           return current;
       }
   });
@@ -25522,7 +25539,7 @@ var cm6 = (function (exports) {
           highlightSelectionMatches(),
           keymap.of(keymaps),
           readOnly.of(EditorState.readOnly.of(options.readOnly)),
-          syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+          syntaxHighlighting(defaultHighlightStyle),
       ];
 
       let gutterConfig;
@@ -25575,9 +25592,25 @@ var cm6 = (function (exports) {
       }
 
       if ( options.streamParser ) {
+          const customStyles = [];
+          const { tokenTable } = options.streamParser;
+          if ( tokenTable ) {
+              const newTokenTable = {};
+              tokenTable.forEach(a => {
+                  const tag = Tag.define();
+                  newTokenTable[a] = tag;
+                  customStyles.push({ tag, 'class': a });
+              });
+              options.streamParser.tokenTable = newTokenTable;
+          }
           extensions.push(
               StreamLanguage.define(options.streamParser),
           );
+          if ( customStyles.length !== 0 ) {
+              extensions.push(
+                  syntaxHighlighting(HighlightStyle.define(customStyles))
+              );
+          }
       }
 
       if ( options.foldService ) {
