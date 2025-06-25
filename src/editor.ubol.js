@@ -86,7 +86,6 @@ function createEditorState(text, options = {}) {
         highlightSelectionMatches(),
         keymap.of(keymaps),
         readOnly.of(EditorState.readOnly.of(options.readOnly)),
-        syntaxHighlighting(defaultHighlightStyle),
     ];
 
     let gutterConfig;

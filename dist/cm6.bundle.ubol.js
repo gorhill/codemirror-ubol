@@ -25539,7 +25539,6 @@ var cm6 = (function (exports) {
           highlightSelectionMatches(),
           keymap.of(keymaps),
           readOnly.of(EditorState.readOnly.of(options.readOnly)),
-          syntaxHighlighting(defaultHighlightStyle),
       ];
 
       let gutterConfig;
