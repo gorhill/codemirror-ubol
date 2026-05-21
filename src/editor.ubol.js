@@ -98,6 +98,10 @@ function createEditorState(text, options = {}) {
     }
     extensions.push(lineNumbers(gutterConfig));
 
+    if ( options.lineWrapping ) {
+        extensions.push(EditorView.lineWrapping);
+    }
+
     if ( options.updateListener ) {
         extensions.push(EditorView.updateListener.of(options.updateListener));
     }
