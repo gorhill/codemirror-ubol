@@ -20240,6 +20240,23 @@ var cm6 = (function (exports) {
   Redo a change or selection change.
   */
   const redoSelection = /*@__PURE__*/cmd(1 /* BranchName.Undone */, true);
+  function depth(side) {
+      return function (state) {
+          let histState = state.field(historyField_, false);
+          if (!histState)
+              return 0;
+          let branch = side == 0 /* BranchName.Done */ ? histState.done : histState.undone;
+          return branch.length - (branch.length && !branch[0].changes ? 1 : 0);
+      };
+  }
+  /**
+  The amount of undoable change events available in a given state.
+  */
+  const undoDepth = /*@__PURE__*/depth(0 /* BranchName.Done */);
+  /**
+  The amount of redoable change events available in a given state.
+  */
+  const redoDepth = /*@__PURE__*/depth(1 /* BranchName.Undone */);
   // History events store groups of changes or effects that need to be
   // undone/redone together.
   class HistEvent {
@@ -25870,10 +25887,15 @@ var cm6 = (function (exports) {
   exports.foldAll = foldAll;
   exports.lineErrorAdd = lineErrorAdd;
   exports.lineErrorClear = lineErrorClear;
+  exports.redo = redo;
+  exports.redoDepth = redoDepth;
   exports.resetUndoRedo = resetUndoRedo;
   exports.spanErrorAdd = spanErrorAdd;
   exports.spanErrorClear = spanErrorClear;
+  exports.toggleComment = toggleComment;
   exports.toggleReadOnly = toggleReadOnly;
+  exports.undo = undo;
+  exports.undoDepth = undoDepth;
 
   return exports;
 

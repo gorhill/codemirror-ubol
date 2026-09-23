@@ -54,6 +54,16 @@ import { oneDark } from '@codemirror/theme-one-dark';
 
 /******************************************************************************/
 
+export {
+    redo,
+    redoDepth,
+    toggleComment,
+    undo,
+    undoDepth,
+} from '@codemirror/commands';
+
+/******************************************************************************/
+
 function createEditorState(text, options = {}) {
     const keymaps = [
         ...defaultKeymap,
